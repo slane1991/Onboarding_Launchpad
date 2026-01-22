@@ -101,6 +101,9 @@ Replace these values with your OAuth client details:
 - `client_secret`  
 - `resource`  
 
+<img width="972" height="1138" alt="image" src="https://github.com/user-attachments/assets/c82d7f80-098a-49af-90a9-30771c8100e5" />
+
+
 ### Notes
 
 - Tokens are valid for **30 seconds**  
