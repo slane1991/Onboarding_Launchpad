@@ -72,7 +72,7 @@ Follow Dynatrace's OAuth setup guide:
 Download the prebuilt automation workflow from this repository:
 
 ```
-Onboarding Workflow Automation/onboarding-automation-workflow.workflow-template.yaml
+[Onboarding Workflow Automation/onboarding-automation-workflow.workflow-template.yaml](https://github.com/slane1991/Onboarding_Launchpad/tree/main/Onboarding%20Workflow%20Automation)
 ```
 
 ### Upload in Dynatrace
