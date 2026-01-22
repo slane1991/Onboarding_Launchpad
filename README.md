@@ -61,7 +61,9 @@ Follow Dynatrace's OAuth setup guide:
 5. Add a description  
 6. Assign permissions:  
    - **Document Service → Create and edit documents**  
-     - `documents:documents:write`  
+     - `documents:documents:write`
+   - **Account → View users and groups (Used for adoption tracking dashboard)**  
+     - `account-idm-read, iam:users:read, iam:groups:read`  
 7. Select **Create client**  
 8. Copy the generated values — you will not be able to view the client secret again
 
