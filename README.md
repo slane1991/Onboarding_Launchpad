@@ -151,6 +151,3 @@ You may now:
 - ✔ Configure user access to each Launchpad  
 
 By default, Launchpads are **not globally shared**, allowing customers to control access.
-
-
-Just let me know!
