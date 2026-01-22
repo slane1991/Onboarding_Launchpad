@@ -1,0 +1,402 @@
+metadata:
+  version: '1'
+  dependencies:
+    apps:
+    - id: dynatrace.automations
+      version: ^1.2632.0
+  inputs: []
+workflow:
+  title: Onboarding Automation Workflow
+  description: ''
+  schemaVersion: 3
+  trigger: {}
+  result: null
+  type: STANDARD
+  input: {}
+  hourlyExecutionLimit: 1000
+  guide: null
+  tasks:
+    fetch_users:
+      name: fetch_users
+      input:
+        script: "\nimport { execution } from '@dynatrace-sdk/automation-utils';\n\
+          import { executionsClient } from '@dynatrace-sdk/client-automation';\n//\
+          \ If you still need the credential vault path, you can re-add this:\n//\
+          \ import { credentialVaultClient } from \"@dynatrace-sdk/client-classic-environment-v2\"\
+          ;\n\nasync function getUsers(token: string) {\n  const response = await\
+          \ fetch(\n    \"https://api-hardening.internal.dynatracelabs.com/iam/v1/accounts/b2775a28-cfd5-4dc1-8336-31e7d0ccb9ad/users\"\
+          ,\n    {\n      method: \"GET\",\n      headers: {\n        \"Authorization\"\
+          : `Bearer ${token}`,\n        \"Content-Type\": \"application/json\"\n \
+          \     }\n    }\n  );\n\n  if (!response.ok) {\n    const text = await response.text();\n\
+          \    throw new Error(`API call failed: ${response.status} ${response.statusText}\
+          \ ${text}`);\n  }\n\n  const data = await response.json();\n  const jsonl\
+          \ = data.items.map((item: unknown) => JSON.stringify(item)).join(\"\\n\"\
+          );\n  console.log(`Fetched ${data.items.length} users`);\n  return jsonl;\n\
+          }\n\n/**\n * This task expects an earlier step in the SAME workflow execution\n\
+          \ * to have an ID of \"fetch_bearer_token\" and to return the token string.\n\
+          \ */\nexport default async function ({ execution_id }: { execution_id: string\
+          \ }) {\n  // Get workflow context (trigger, ids, etc.)\n  const ex = await\
+          \ execution();\n  console.log('Automated script execution on behalf of',\
+          \ ex.trigger);\n\n  // Pull the bearer token from the output of the earlier\
+          \ step in THIS execution\n  const bearerTokenResult = await executionsClient.getTaskExecutionResult({\n\
+          \    executionId: execution_id,\n    id: \"fetch_bearer_token\",       \
+          \    // ← must match the step ID of the token-producing task\n  });\n\n\
+          \  // Depending on how the earlier step returns data, bearerTokenResult\
+          \ could be a string,\n  // or an object like { token: \"...\" }. Normalize\
+          \ it:\n  const bearerToken =\n    typeof bearerTokenResult === 'string'\n\
+          \      ? bearerTokenResult\n      : (bearerTokenResult?.token ?? bearerTokenResult?.bearerToken);\n\
+          \n  if (!bearerToken) {\n    throw new Error('Bearer token not found in\
+          \ result of step \"fetch_bearer_token\".');\n  }\n\n  // Return JSONL string\
+          \ of users for downstream tasks\n  return await getUsers(bearerToken);\n\
+          \n  // Alternative if you prefer named outputs:\n  // return { users_jsonl:\
+          \ await getUsers(bearerToken) };\n}\n"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: 0
+        y: 2
+      conditions:
+        states:
+          fetch_bearer_token: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - fetch_bearer_token
+    upload_dashboard:
+      name: upload_dashboard
+      input:
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\n\n\
+          export default async function ({ executionId }) {\n\n  //\n  // Load workflow\
+          \ context\n  //\n  const ex = await execution(executionId);\n\n  // Bearer\
+          \ token from earlier step\n  const bearerToken = await ex.result(\"fetch_bearer_token\"\
+          );\n\n  // JSON files downloaded from GitHub\n  const githubFiles = await\
+          \ ex.result(\"fetch_dashboard_github\");\n  const files = githubFiles.files;\n\
+          \n  //\n  // Determine tenant URL dynamically\n  //\n  const tenantUrl =\
+          \ globalThis.environmentUrl;\n\n  if (!tenantUrl) {\n    throw new Error(\"\
+          Unable to determine tenant URL from environment\");\n  }\n\n  //\n  // Build\
+          \ correct upload endpoint\n  //\n  const uploadUrl = `${tenantUrl}platform/document/v1/documents`;\n\
+          \n  //\n  // Document metadata\n  //\n  const documents = [\n    { file:\
+          \ \"Launchpad Tracker.json\", name: \"Onboarding - Launchpad Tracker\",\
+          \ id: \"onboarding-admin-tracking-k5294kxd5l\" }\n  ];\n\n  //\n  // Upload\
+          \ each Document\n  //\n  const results = [];\n\n  for (const lp of documents)\
+          \ {\n    const jsonData = files[lp.file];\n\n    if (!jsonData) {\n    \
+          \  throw new Error(`Missing JSON data for ${lp.file}`);\n    }\n\n    //\
+          \ Build multipart/form-data body\n    const form = new FormData();\n   \
+          \ form.append(\"name\", lp.name);\n    form.append(\"type\", \"dashboard\"\
+          );\n    form.append(\"id\", lp.id);\n\n    const blob = new Blob([JSON.stringify(jsonData,\
+          \ null, 2)], {\n      type: \"application/json\"\n    });\n\n    form.append(\"\
+          content\", blob, lp.file);\n\n    // Perform upload\n    const response\
+          \ = await fetch(uploadUrl, {\n      method: \"POST\",\n      headers: {\n\
+          \        \"Authorization\": `Bearer ${bearerToken}`\n      },\n      body:\
+          \ form\n    });\n\n    const respData = await response.json();\n\n    results.push({\n\
+          \      dashboard: lp.name,\n      id: lp.id,\n      status: response.status,\n\
+          \      response: respData\n    });\n\n    if (!response.ok) {\n      throw\
+          \ new Error(`Failed to upload ${lp.name}: ${response.status} ${response.statusText}`);\n\
+          \    }\n  }\n\n  //\n  // Return summary\n  //\n  return {\n    uploaded:\
+          \ results\n  };\n}"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: 1
+        y: 2
+      conditions:
+        states:
+          fetch_bearer_token: OK
+          fetch_dashboard_github: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - fetch_dashboard_github
+      - fetch_bearer_token
+    upload_lookup_js:
+      name: upload_lookup_js
+      input:
+        script: "\nimport { executionsClient } from '@dynatrace-sdk/client-automation'\n\
+          \n/** Toggle to true while diagnosing payload shapes */\nconst DEBUG_LOG\
+          \ = false;\n\nfunction logDebug(label: string, obj: any) {\n  if (DEBUG_LOG)\
+          \ {\n    try {\n      console.log(label, JSON.stringify(obj, null, 2));\n\
+          \    } catch {\n      console.log(label, obj);\n    }\n  }\n}\n\n/** Try\
+          \ multiple shapes to get a workflow ID from a single-execution payload */\n\
+          function extractWorkflowIdFromExecutionPayload(current: any): string | undefined\
+          \ {\n  // Common shapes seen across SDK versions\n  return (\n    current?.workflow?.id\
+          \ ||                 // { workflow: { id: \"...\" } }\n    current?.workflowId\
+          \ ||                   // { workflowId: \"...\" }\n    current?.workflow\
+          \ ||                     // { workflow: \"wf-...\" }  (string id)\n    current?.execution?.workflow?.id\
+          \ ||      // { execution: { workflow: { id: \"...\" } } }\n    current?.execution?.workflowId\
+          \ ||        // { execution: { workflowId: \"...\" } }\n    current?.execution?.workflow\
+          \             // { execution: { workflow: \"wf-...\" } }\n  );\n}\n\n/**\
+          \ Normalize results list across possible keys */\nfunction normalizeResultsList(listPayload:\
+          \ any): any[] {\n  return Array.isArray(listPayload?.results)\n    ? listPayload.results\n\
+          \    : Array.isArray(listPayload?.items)\n    ? listPayload.items\n    :\
+          \ [];\n}\n\n/** Normalize task result payload to the actual content we want\
+          \ to upload */\nfunction extractTaskOutput(taskResult: any): any {\n  return\
+          \ (\n    taskResult?.result ??\n    taskResult?.output ??\n    taskResult\
+          \ // as-is fallback\n  );\n}\n\nasync function uploadLookup(uploadContent:\
+          \ string | object | object[]) {\n  const form = new FormData();\n\n  form.append('request',\
+          \ JSON.stringify({\n    filePath: '/lookups/forge_user_json_singleline',\n\
+          \    parsePattern: `JSON:json`,\n    overwrite: true,\n    lookupField:\
+          \ 'uid'\n  }));\n\n  // Normalize to an array of objects\n  let jsonArray:\
+          \ any[] = [];\n  if (typeof uploadContent === 'string') {\n    const trimmed\
+          \ = uploadContent.trim();\n    if (trimmed.startsWith('[')) {\n      jsonArray\
+          \ = JSON.parse(trimmed);\n    } else {\n      jsonArray = trimmed\n    \
+          \    .split('\\n')\n        .filter(line => line.trim().length > 0)\n  \
+          \      .map(line => JSON.parse(line));\n    }\n  } else if (Array.isArray(uploadContent))\
+          \ {\n    jsonArray = uploadContent;\n  } else if (uploadContent && typeof\
+          \ uploadContent === 'object') {\n    jsonArray = [uploadContent];\n  } else\
+          \ {\n    throw new Error('Unsupported uploadContent type for uploadLookup');\n\
+          \  }\n\n  const jsonBlob = new Blob([JSON.stringify(jsonArray)], { type:\
+          \ 'application/json' });\n  form.append('content', jsonBlob, 'content.json');\n\
+          \n  const response = await fetch('/platform/storage/resource-store/v1/files/tabular/lookup:upload',\
+          \ {\n    method: 'POST',\n    body: form\n  });\n\n  if (!response.ok) {\n\
+          \    const errorText = await response.text();\n    throw new Error('Upload\
+          \ failed: ' + errorText);\n  }\n\n  return 'Upload successful';\n}\n\nexport\
+          \ default async function ({ execution_id }: { execution_id: string }) {\n\
+          \  // 1) Get the current execution payload\n  const current = await executionsClient.getExecution({\
+          \ id: execution_id });\n  logDebug('Current execution payload:', current);\n\
+          \n  // 2) Extract workflowId from the single execution payload\n  let workflowId\
+          \ = extractWorkflowIdFromExecutionPayload(current);\n\n  // 3) If not found,\
+          \ discover it by listing executions and matching the current id\n  if (!workflowId)\
+          \ {\n    const probeList = await executionsClient.getExecutions({\n    \
+          \  ordering: '-startedAt',\n      state: ['SUCCESS', 'RUNNING'], // safest\
+          \ format\n      // no workflow filter so we can locate the current execution\
+          \ first\n    });\n\n    logDebug('Execution list probe payload:', probeList);\n\
+          \n    const probeResults = normalizeResultsList(probeList);\n    const found\
+          \ = probeResults.find(e =>\n      e?.id === execution_id || e?.executionId\
+          \ === execution_id\n    );\n\n    workflowId =\n      found?.workflow?.id\
+          \ ||\n      found?.workflowId ||\n      found?.workflow;\n\n    if (!workflowId)\
+          \ {\n      throw new Error('Could not determine workflowId from current\
+          \ execution or list probe');\n    }\n  }\n\n  // 4) Now use workflowId to\
+          \ fetch recent executions for this workflow\n  const runningExecutionList\
+          \ = await executionsClient.getExecutions({\n    ordering: '-startedAt',\n\
+          \    // Depending on SDK, this can be `workflow: [workflowId]` or `workflowId:\
+          \ workflowId`\n    // Most versions accept `workflow: [<id>]`:\n    workflow:\
+          \ [workflowId],\n    state: ['SUCCESS', 'RUNNING'],\n  });\n  logDebug('RunningExecutionList\
+          \ payload:', runningExecutionList);\n\n  const results = normalizeResultsList(runningExecutionList);\n\
+          \n  if (!Array.isArray(results) || results.length === 0) {\n    // Fallback:\
+          \ use the current execution\n    console.warn('No executions found for workflow;\
+          \ falling back to current execution_id');\n    results.push({ id: execution_id\
+          \ });\n  }\n\n  // If the first is the current one and you prefer the previous,\
+          \ skip index 0\n  let lastExecutionId = results[0]?.id ?? results[0]?.executionId;\n\
+          \  if ((lastExecutionId === execution_id) && results.length > 1) {\n   \
+          \ lastExecutionId = results[1]?.id ?? results[1]?.executionId;\n  }\n  if\
+          \ (!lastExecutionId) {\n    throw new Error('Could not determine lastExecutionId\
+          \ from executions list');\n  }\n\n  console.log('Using executionId:', lastExecutionId);\n\
+          \n  // 5) Fetch the task result\n  const lastTaskExecutionResult = await\
+          \ executionsClient.getTaskExecutionResult({\n    executionId: lastExecutionId,\n\
+          \    id: 'fetch_users'\n  });\n  logDebug('Task execution raw result:',\
+          \ lastTaskExecutionResult);\n\n  const contentForUpload = extractTaskOutput(lastTaskExecutionResult);\n\
+          \n  const uploadMsg = await uploadLookup(contentForUpload);\n  console.log(uploadMsg);\n\
+          \n  return lastTaskExecutionResult;\n}"
+      action: dynatrace.automations:run-javascript
+      active: true
+      position:
+        x: 0
+        y: 3
+      conditions:
+        states:
+          fetch_users: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - fetch_users
+    upload_launchpads:
+      name: upload_launchpads
+      input:
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\n\n\
+          export default async function ({ executionId }) {\n\n  //\n  // Load workflow\
+          \ context\n  //\n  const ex = await execution(executionId);\n\n  // Bearer\
+          \ token from earlier step\n  const bearerToken = await ex.result(\"fetch_bearer_token\"\
+          );\n\n  // JSON files downloaded from GitHub\n  const githubFiles = await\
+          \ ex.result(\"fetch_launchpads_github\");\n  const files = githubFiles.files;\n\
+          \n  //\n  // Determine tenant URL dynamically\n  //\n  const tenantUrl =\
+          \ globalThis.environmentUrl;\n\n  if (!tenantUrl) {\n    throw new Error(\"\
+          Unable to determine tenant URL from environment\");\n  }\n\n  //\n  // Build\
+          \ correct upload endpoint\n  //\n  const uploadUrl = `${tenantUrl}platform/document/v1/documents`;\n\
+          \n  //\n  // Launchpad metadata\n  //\n  const launchpads = [\n    { file:\
+          \ \"Onboarding - Developers.json\", name: \"Onboarding - Developers\", id:\
+          \ \"onboarding-developers-a93f1cbe27\" },\n    { file: \"Onboarding - Dynatrace\
+          \ Administrators.json\", name: \"Onboarding - Dynatrace Administrators\"\
+          , id: \"onboarding-dynatrace-administrators-4c9ae2bd01\" },\n    { file:\
+          \ \"Onboarding - Dynatrace Support & Helpdesk.json\", name: \"Onboarding\
+          \ - Dynatrace Support & Helpdesk\", id: \"onboarding-dynatrace-support-helpdesk-13fb9c7ad5\"\
+          \ },\n    { file: \"Onboarding - Frontend Developer (Mobile).json\", name:\
+          \ \"Onboarding - Frontend Developer (Mobile)\", id: \"onboarding-frontend-developer-mobile-89de3ac4f2\"\
+          \ },\n    { file: \"Onboarding - Frontend Developer (Web).json\", name:\
+          \ \"Onboarding - Frontend Developer (Web)\", id: \"onboarding-frontend-developer-web-b2e84d79c1\"\
+          \ },\n    { file: \"Onboarding - Infrastructure Engineer.json\", name: \"\
+          Onboarding - Infrastructure Engineer\", id: \"onboarding-infrastructure-engineer-18bcd54ea3\"\
+          \ },\n    { file: \"Onboarding - Operations.json\", name: \"Onboarding -\
+          \ Operations\", id: \"onboarding-operations-9ae84f1bd2\" },\n    { file:\
+          \ \"Onboarding - Platform Engineers.json\", name: \"Onboarding - Platform\
+          \ Engineers\", id: \"onboarding-platform-engineers-2ad913c7e8\" },\n   \
+          \ { file: \"Onboarding - Security Engineers.json\", name: \"Onboarding -\
+          \ Security Engineers\", id: \"onboarding-security-engineers-d91c2b8a45\"\
+          \ },\n    { file: \"Onboarding - Site Reliability Engineers.json\", name:\
+          \ \"Onboarding - Site Reliability Engineers\", id: \"onboarding-site-reliability-engineers-54c8f13b9e\"\
+          \ },\n    { file: \"Onboarding Home Page - Accelerate Your Dynatrace Journey.json\"\
+          , name: \"Onboarding Home Page - Accelerate Your Dynatrace Journey\", id:\
+          \ \"onboarding-home-page-accelerate-your-dynatrace-journey-fa9137bd42\"\
+          \ }\n  ];\n\n  //\n  // Upload each launchpad\n  //\n  const results = [];\n\
+          \n  for (const lp of launchpads) {\n    const jsonData = files[lp.file];\n\
+          \n    if (!jsonData) {\n      throw new Error(`Missing JSON data for ${lp.file}`);\n\
+          \    }\n\n    // Build multipart/form-data body\n    const form = new FormData();\n\
+          \    form.append(\"name\", lp.name);\n    form.append(\"type\", \"launchpad\"\
+          );\n    form.append(\"id\", lp.id);\n\n    const blob = new Blob([JSON.stringify(jsonData,\
+          \ null, 2)], {\n      type: \"application/json\"\n    });\n\n    form.append(\"\
+          content\", blob, lp.file);\n\n    // Perform upload\n    const response\
+          \ = await fetch(uploadUrl, {\n      method: \"POST\",\n      headers: {\n\
+          \        \"Authorization\": `Bearer ${bearerToken}`\n      },\n      body:\
+          \ form\n    });\n\n    const respData = await response.json();\n\n    results.push({\n\
+          \      launchpad: lp.name,\n      id: lp.id,\n      status: response.status,\n\
+          \      response: respData\n    });\n\n    if (!response.ok) {\n      throw\
+          \ new Error(`Failed to upload ${lp.name}: ${response.status} ${response.statusText}`);\n\
+          \    }\n  }\n\n  //\n  // Return summary\n  //\n  return {\n    uploaded:\
+          \ results\n  };\n}"
+      action: dynatrace.automations:run-javascript
+      active: true
+      position:
+        x: -1
+        y: 2
+      conditions:
+        states:
+          fetch_bearer_token: OK
+          fetch_launchpads_github: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - fetch_launchpads_github
+      - fetch_bearer_token
+    fetch_bearer_token:
+      name: fetch_bearer_token
+      input:
+        script: "export default async function () {\n\n  // Determine tenant URL\n\
+          \  const tenantUrl = globalThis.environmentUrl;\n\n  if (!tenantUrl) {\n\
+          \    throw new Error(\"Unable to determine tenant URL from environment\"\
+          );\n  }\n\n  // Determine SSO endpoint based on environment\n  let ssoBase\
+          \ = \"\";\n\n  if (tenantUrl.includes(\".dev.apps.\")) {\n    ssoBase =\
+          \ \"https://sso-dev.dynatracelabs.com/sso/oauth2/token\";\n  } else if (tenantUrl.includes(\"\
+          .sprint.apps.\")) {\n    ssoBase = \"https://sso-sprint.dynatracelabs.com/sso/oauth2/token\"\
+          ;\n  } else if (tenantUrl.includes(\".apps.dynatrace.com\")) {\n    ssoBase\
+          \ = \"https://sso.dynatrace.com/sso/oauth2/token\";\n  } else {\n    throw\
+          \ new Error(`Unable to determine SSO endpoint from tenant URL: ${tenantUrl}`);\n\
+          \  }\n\n  // Prepare headers\n  const myHeaders = new Headers();\n  myHeaders.append(\"\
+          Content-Type\", \"application/x-www-form-urlencoded\");\n\n  // Prepare\
+          \ body\n  // Note: You'll need to create an OAuth client with the \"DOCUMENTS\"\
+          \ permissions and update the client_id, client_secret and resource values\
+          \ with your own\n  // You can learn how to do so at https://docs.dynatrace.com/docs/shortlink/oauth\n\
+          \  const urlencoded = new URLSearchParams();\n  urlencoded.append(\"grant_type\"\
+          , \"client_credentials\");\n  urlencoded.append(\"client_id\", \"YOUR_CLIENT_ID\"\
+          );\n  urlencoded.append(\"client_secret\", \"YOUR_CLIENT_SECRET\");\n  urlencoded.append(\"\
+          resource\", \"YOUR_DT_ACCOUNT_ID\");\n\n  const requestOptions = {\n   \
+          \ method: \"POST\",\n    headers: myHeaders,\n    body: urlencoded,\n  \
+          \  redirect: \"follow\"\n  };\n\n  // Perform request\n  const response\
+          \ = await fetch(ssoBase, requestOptions);\n  const data = await response.json();\n\
+          \n  if (!response.ok) {\n    throw new Error(`Failed to fetch token: ${response.status}\
+          \ ${JSON.stringify(data)}`);\n  }\n\n  // Return access token only\n  return\
+          \ data.access_token;\n}"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: 0
+        y: 1
+      description: Run custom JavaScript code.
+      predecessors: []
+    fetch_dashboard_github:
+      name: fetch_dashboard_github
+      input:
+        script: "export default async function () {\n  const owner = \"Hao-D1\";\n\
+          \  const repo = \"forge\";\n\n  // Base API URL\n  const apiBase = `https://api.github.com/repos/${owner}/${repo}/contents/`;\n\
+          \n  // Fetch the root directory file list\n  const fileListResponse = await\
+          \ fetch(apiBase, {\n    headers: {\n      \"Accept\": \"application/vnd.github.v3+json\"\
+          ,\n    }\n  });\n\n  if (!fileListResponse.ok) {\n    throw new Error(`GitHub\
+          \ API error listing files: ${fileListResponse.status} ${fileListResponse.statusText}`);\n\
+          \  }\n\n  const fileList = await fileListResponse.json();\n\n  // Filter\
+          \ JSON files (11 of them in your repo)\n  const jsonFiles = fileList.filter(file\
+          \ => file.name.endsWith(\".json\"));\n\n  const results = {};\n\n  // Loop\
+          \ to download each JSON file\n  for (const file of jsonFiles) {\n    const\
+          \ fileResponse = await fetch(file.download_url, {\n      headers: {\n  \
+          \      \"Accept\": \"application/json\",\n      }\n    });\n\n    if (!fileResponse.ok)\
+          \ {\n      throw new Error(`Error downloading ${file.name}: ${fileResponse.status}\
+          \ ${fileResponse.statusText}`);\n    }\n\n    const fileData = await fileResponse.json();\n\
+          \n    // Store by filename (without extension)\n    results[file.name] =\
+          \ fileData;\n  }\n\n  // Return all JSON files for next workflow step\n\
+          \  return {\n    files: results\n  };\n}"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: 1
+        y: 1
+      description: Run custom JavaScript code.
+      predecessors: []
+    fetch_launchpads_github:
+      name: fetch_launchpads_github
+      input:
+        script: "export default async function () {\n  const owner = \"slane1991\"\
+          ;\n  const repo = \"Onboarding_Launchpad\";\n\n  // Base API URL\n  const\
+          \ apiBase = `https://api.github.com/repos/${owner}/${repo}/contents/`;\n\
+          \n  // Fetch the root directory file list\n  const fileListResponse = await\
+          \ fetch(apiBase, {\n    headers: {\n      \"Accept\": \"application/vnd.github.v3+json\"\
+          ,\n    }\n  });\n\n  if (!fileListResponse.ok) {\n    throw new Error(`GitHub\
+          \ API error listing files: ${fileListResponse.status} ${fileListResponse.statusText}`);\n\
+          \  }\n\n  const fileList = await fileListResponse.json();\n\n  // Filter\
+          \ JSON files (11 of them in your repo)\n  const jsonFiles = fileList.filter(file\
+          \ => file.name.endsWith(\".json\"));\n\n  const results = {};\n\n  // Loop\
+          \ to download each JSON file\n  for (const file of jsonFiles) {\n    const\
+          \ fileResponse = await fetch(file.download_url, {\n      headers: {\n  \
+          \      \"Accept\": \"application/json\",\n      }\n    });\n\n    if (!fileResponse.ok)\
+          \ {\n      throw new Error(`Error downloading ${file.name}: ${fileResponse.status}\
+          \ ${fileResponse.statusText}`);\n    }\n\n    const fileData = await fileResponse.json();\n\
+          \n    // Store by filename (without extension)\n    results[file.name] =\
+          \ fileData;\n  }\n\n  // Return all JSON files for next workflow step\n\
+          \  return {\n    files: results\n  };\n}"
+      action: dynatrace.automations:run-javascript
+      active: true
+      position:
+        x: -1
+        y: 1
+      description: Run custom JavaScript code.
+      predecessors: []
+    upload_lookup_launchpad_info:
+      name: upload_lookup_launchpad_info
+      input:
+        script: "\nasync function uploadLookup(uploadContent: string) {\n  // Optionally\
+          \ normalize problematic characters in the NDJSON lines:\n  // - Convert\
+          \ &amp; to &\n  // - Remove stray trailing ')' at end of the \"Helpdesk)\"\
+          \ name\n  const normalizedContent = uploadContent\n    .split('\\n')\n \
+          \   .map(line => {\n      // Safely try to parse and re-stringify to ensure\
+          \ valid JSON lines\n      try {\n        const obj = JSON.parse(line);\n\
+          \        if (typeof obj.name === 'string') {\n          obj.name = obj.name.replace('&amp;',\
+          \ '&').replace(/\\)\\s*$/, '');\n        }\n        return JSON.stringify(obj);\n\
+          \      } catch {\n        // If not valid JSON, keep the line as-is (or\
+          \ throw)\n        return line;\n      }\n    })\n    .join('\\n');\n\n \
+          \ const form = new FormData();\n\n  form.append(\n    'request',\n    JSON.stringify({\n\
+          \      filePath: '/lookups/onboarding_launchpads', // destination path in\
+          \ Dynatrace resource store\n      parsePattern: 'JSON:json',           \
+          \                // expects NDJSON (1 JSON object per line)\n      overwrite:\
+          \ true,\n      lookupField: 'name',                                   //\
+          \ use a stable unique key; change to 'name' if required\n    })\n  );\n\n\
+          \  // IMPORTANT: send as NDJSON; do NOT wrap in an array\n  const ndjsonBlob\
+          \ = new Blob([normalizedContent], { type: 'application/json' });\n  form.append('content',\
+          \ ndjsonBlob, 'content.ndjson');\n\n  const response = await fetch('/platform/storage/resource-store/v1/files/tabular/lookup:upload',\
+          \ {\n    method: 'POST',\n    body: form,\n  });\n\n  if (!response.ok)\
+          \ {\n    const errorText = await response.text();\n    throw new Error('Upload\
+          \ failed: ' + errorText);\n  }\n\n  return 'Upload successful';\n}\n\nexport\
+          \ default async function () {\n  const jsonContent = `{\"name\":\"Onboarding\
+          \ - Developers\",\"id\":\"onboarding-developers-a93f1cbe27\"}\n{\"name\"\
+          :\"Onboarding - Dynatrace Administrators\",\"id\":\"onboarding-dynatrace-administrators-4c9ae2bd01\"\
+          }\n{\"name\":\"Onboarding - Dynatrace Support &amp; Helpdesk)\",\"id\":\"\
+          onboarding-dynatrace-support-helpdesk-13fb9c7ad5\"}\n{\"name\":\"Onboarding\
+          \ - Frontend Developer (Mobile)\",\"id\":\"onboarding-frontend-developer-mobile-89de3ac4f2\"\
+          }\n{\"name\":\"Onboarding - Frontend Developer (Web)\",\"id\":\"onboarding-frontend-developer-web-b2e84d79c1\"\
+          }\n{\"name\":\"Onboarding - Infrastructure Engineer\",\"id\":\"onboarding-infrastructure-engineer-18bcd54ea3\"\
+          }\n{\"name\":\"Onboarding - Operations\",\"id\":\"onboarding-operations-9ae84f1bd2\"\
+          }\n{\"name\":\"Onboarding - Platform Engineers\",\"id\":\"onboarding-platform-engineers-2ad913c7e8\"\
+          }\n{\"name\":\"Onboarding - Security Engineers\",\"id\":\"onboarding-security-engineers-d91c2b8a45\"\
+          }\n{\"name\":\"Onboarding - Site Reliability Engineers\",\"id\":\"onboarding-site-reliability-engineers-54c8f13b9e\"\
+          }\n{\"name\":\"Onboarding Home Page - Accelerate Your Dynatrace Journey\"\
+          ,\"id\":\"onboarding-home-page-accelerate-your-dynatrace-journey-fa9137bd42\"\
+          }`;\n\n  try {\n    const result = await uploadLookup(jsonContent);\n  \
+          \  console.log(result);\n    return result; // if your environment requires\
+          \ last_task_execution_result, set it here\n  } catch (e: any) {\n    console.error(e?.message\
+          \ || e);\n    return e?.message || 'Upload failed';\n  }\n}\n"
+      action: dynatrace.automations:run-javascript
+      active: true
+      position:
+        x: 2
+        y: 1
+      conditions:
+        states: {}
+      description: Run custom JavaScript code.
+      predecessors: []
