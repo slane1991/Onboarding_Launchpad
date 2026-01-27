@@ -3,7 +3,7 @@ metadata:
   dependencies:
     apps:
     - id: dynatrace.automations
-      version: ^1.2632.0
+      version: ^1.2538.1
   inputs: []
 workflow:
   title: Onboarding Automation Workflow
@@ -19,37 +19,35 @@ workflow:
     fetch_users:
       name: fetch_users
       input:
-        script: "\nimport { execution } from '@dynatrace-sdk/automation-utils';\n\
-          import { executionsClient } from '@dynatrace-sdk/client-automation';\n//\
-          \ If you still need the credential vault path, you can re-add this:\n//\
-          \ import { credentialVaultClient } from \"@dynatrace-sdk/client-classic-environment-v2\"\
-          ;\n\nasync function getUsers(token: string) {\n  const response = await\
-          \ fetch(\n    \"https://api-hardening.internal.dynatracelabs.com/iam/v1/accounts/b2775a28-cfd5-4dc1-8336-31e7d0ccb9ad/users\"\
-          ,\n    {\n      method: \"GET\",\n      headers: {\n        \"Authorization\"\
-          : `Bearer ${token}`,\n        \"Content-Type\": \"application/json\"\n \
-          \     }\n    }\n  );\n\n  if (!response.ok) {\n    const text = await response.text();\n\
-          \    throw new Error(`API call failed: ${response.status} ${response.statusText}\
-          \ ${text}`);\n  }\n\n  const data = await response.json();\n  const jsonl\
-          \ = data.items.map((item: unknown) => JSON.stringify(item)).join(\"\\n\"\
-          );\n  console.log(`Fetched ${data.items.length} users`);\n  return jsonl;\n\
-          }\n\n/**\n * This task expects an earlier step in the SAME workflow execution\n\
-          \ * to have an ID of \"fetch_bearer_token\" and to return the token string.\n\
-          \ */\nexport default async function ({ execution_id }: { execution_id: string\
-          \ }) {\n  // Get workflow context (trigger, ids, etc.)\n  const ex = await\
-          \ execution();\n  console.log('Automated script execution on behalf of',\
-          \ ex.trigger);\n\n  // Pull the bearer token from the output of the earlier\
-          \ step in THIS execution\n  const bearerTokenResult = await executionsClient.getTaskExecutionResult({\n\
-          \    executionId: execution_id,\n    id: \"fetch_bearer_token\",       \
-          \    // ← must match the step ID of the token-producing task\n  });\n\n\
-          \  // Depending on how the earlier step returns data, bearerTokenResult\
-          \ could be a string,\n  // or an object like { token: \"...\" }. Normalize\
-          \ it:\n  const bearerToken =\n    typeof bearerTokenResult === 'string'\n\
-          \      ? bearerTokenResult\n      : (bearerTokenResult?.token ?? bearerTokenResult?.bearerToken);\n\
-          \n  if (!bearerToken) {\n    throw new Error('Bearer token not found in\
-          \ result of step \"fetch_bearer_token\".');\n  }\n\n  // Return JSONL string\
-          \ of users for downstream tasks\n  return await getUsers(bearerToken);\n\
-          \n  // Alternative if you prefer named outputs:\n  // return { users_jsonl:\
-          \ await getUsers(bearerToken) };\n}\n"
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\nimport\
+          \ { executionsClient } from '@dynatrace-sdk/client-automation';\n\nfunction\
+          \ determineApiBase(tenantUrl: string): string {\n  if (tenantUrl.includes(\"\
+          .dev.apps.\")) {\n    return \"https://api-dev.internal.dynatracelabs.com\"\
+          ;\n  } else if (tenantUrl.includes(\".sprint.apps.\")) {\n    return \"\
+          https://api-hardening.internal.dynatracelabs.com\";\n  } else if (tenantUrl.includes(\"\
+          .apps.dynatrace.com\")) {\n    return \"https://api.dynatrace.com\";\n \
+          \ } else {\n    throw new Error(`Unable to determine API endpoint from tenant\
+          \ URL: ${tenantUrl}`);\n  }\n}\n\nasync function getUsers(token: string,\
+          \ accountId: string, tenantUrl: string) {\n  const apiBase = determineApiBase(tenantUrl);\n\
+          \  const url = `${apiBase}/iam/v1/accounts/${accountId}/users`;\n\n  const\
+          \ response = await fetch(url, {\n    method: \"GET\",\n    headers: {\n\
+          \      \"Authorization\": `Bearer ${token}`,\n      \"Content-Type\": \"\
+          application/json\"\n    }\n  });\n\n  if (!response.ok) {\n    const text\
+          \ = await response.text();\n    throw new Error(`API call failed: ${response.status}\
+          \ ${response.statusText} ${text}`);\n  }\n\n  const data = await response.json();\n\
+          \  const jsonl = data.items.map((item: unknown) => JSON.stringify(item)).join(\"\
+          \\n\");\n  console.log(`Fetched ${data.items.length} users`);\n  return\
+          \ jsonl;\n}\n\nexport default async function ({ execution_id }: { execution_id:\
+          \ string }) {\n  const ex = await execution();\n  console.log('Automated\
+          \ script execution on behalf of', ex.trigger);\n\n  const tenantUrl = globalThis.environmentUrl;\n\
+          \  if (!tenantUrl) {\n    throw new Error(\"Unable to determine tenant URL\
+          \ from environment\");\n  }\n\n  const result = await executionsClient.getTaskExecutionResult({\n\
+          \    executionId: execution_id,\n    id: \"fetch_bearer_token\",\n  });\n\
+          \n  const accessToken = result?.access_token;\n  const accountId = result?.accountId;\n\
+          \n  if (!accessToken || !accountId) {\n    throw new Error(\n      'access_token\
+          \ or accountId not found in result of step \"fetch_bearer_token\".'\n  \
+          \  );\n  }\n\n  return await getUsers(accessToken, accountId, tenantUrl);\n\
+          }"
       action: dynatrace.automations:run-javascript
       position:
         x: 0
@@ -66,32 +64,34 @@ workflow:
         script: "import { execution } from '@dynatrace-sdk/automation-utils';\n\n\
           export default async function ({ executionId }) {\n\n  //\n  // Load workflow\
           \ context\n  //\n  const ex = await execution(executionId);\n\n  // Bearer\
-          \ token from earlier step\n  const bearerToken = await ex.result(\"fetch_bearer_token\"\
-          );\n\n  // JSON files downloaded from GitHub\n  const githubFiles = await\
-          \ ex.result(\"fetch_dashboard_github\");\n  const files = githubFiles.files;\n\
-          \n  //\n  // Determine tenant URL dynamically\n  //\n  const tenantUrl =\
-          \ globalThis.environmentUrl;\n\n  if (!tenantUrl) {\n    throw new Error(\"\
-          Unable to determine tenant URL from environment\");\n  }\n\n  //\n  // Build\
-          \ correct upload endpoint\n  //\n  const uploadUrl = `${tenantUrl}platform/document/v1/documents`;\n\
-          \n  //\n  // Document metadata\n  //\n  const documents = [\n    { file:\
-          \ \"Launchpad Tracker.json\", name: \"Onboarding - Launchpad Tracker\",\
-          \ id: \"onboarding-admin-tracking-k5294kxd5l\" }\n  ];\n\n  //\n  // Upload\
+          \ token from earlier step (NEW SHAPE)\n  const tokenResult = await ex.result(\"\
+          fetch_bearer_token\");\n  const bearerToken =\n    typeof tokenResult ===\
+          \ \"string\"\n      ? tokenResult\n      : tokenResult?.access_token;\n\n\
+          \  if (!bearerToken) {\n    throw new Error('Bearer token not found in result\
+          \ of \"fetch_bearer_token\".');\n  }\n\n  // JSON files downloaded from\
+          \ GitHub\n  const githubFiles = await ex.result(\"fetch_dashboard_github\"\
+          );\n  const files = githubFiles.files;\n\n  //\n  // Determine tenant URL\
+          \ dynamically\n  //\n  const tenantUrl = globalThis.environmentUrl;\n  if\
+          \ (!tenantUrl) {\n    throw new Error(\"Unable to determine tenant URL from\
+          \ environment\");\n  }\n\n  //\n  // Build correct upload endpoint\n  //\n\
+          \  const uploadUrl = `${tenantUrl}platform/document/v1/documents`;\n\n \
+          \ //\n  // Document metadata\n  //\n  const documents = [\n    { file: \"\
+          Launchpad Tracker.json\", name: \"Onboarding - Launchpad Tracker\", id:\
+          \ \"onboarding-admin-tracking-k5294kxd5l\" }\n  ];\n\n  //\n  // Upload\
           \ each Document\n  //\n  const results = [];\n\n  for (const lp of documents)\
-          \ {\n    const jsonData = files[lp.file];\n\n    if (!jsonData) {\n    \
-          \  throw new Error(`Missing JSON data for ${lp.file}`);\n    }\n\n    //\
-          \ Build multipart/form-data body\n    const form = new FormData();\n   \
-          \ form.append(\"name\", lp.name);\n    form.append(\"type\", \"dashboard\"\
-          );\n    form.append(\"id\", lp.id);\n\n    const blob = new Blob([JSON.stringify(jsonData,\
-          \ null, 2)], {\n      type: \"application/json\"\n    });\n\n    form.append(\"\
-          content\", blob, lp.file);\n\n    // Perform upload\n    const response\
+          \ {\n    const jsonData = files[lp.file];\n    if (!jsonData) {\n      throw\
+          \ new Error(`Missing JSON data for ${lp.file}`);\n    }\n\n    const form\
+          \ = new FormData();\n    form.append(\"name\", lp.name);\n    form.append(\"\
+          type\", \"dashboard\");\n    form.append(\"id\", lp.id);\n\n    const blob\
+          \ = new Blob([JSON.stringify(jsonData, null, 2)], {\n      type: \"application/json\"\
+          \n    });\n    form.append(\"content\", blob, lp.file);\n\n    const response\
           \ = await fetch(uploadUrl, {\n      method: \"POST\",\n      headers: {\n\
           \        \"Authorization\": `Bearer ${bearerToken}`\n      },\n      body:\
           \ form\n    });\n\n    const respData = await response.json();\n\n    results.push({\n\
           \      dashboard: lp.name,\n      id: lp.id,\n      status: response.status,\n\
           \      response: respData\n    });\n\n    if (!response.ok) {\n      throw\
           \ new Error(`Failed to upload ${lp.name}: ${response.status} ${response.statusText}`);\n\
-          \    }\n  }\n\n  //\n  // Return summary\n  //\n  return {\n    uploaded:\
-          \ results\n  };\n}"
+          \    }\n  }\n\n  return { uploaded: results };\n}"
       action: dynatrace.automations:run-javascript
       position:
         x: 1
@@ -200,14 +200,18 @@ workflow:
         script: "import { execution } from '@dynatrace-sdk/automation-utils';\n\n\
           export default async function ({ executionId }) {\n\n  //\n  // Load workflow\
           \ context\n  //\n  const ex = await execution(executionId);\n\n  // Bearer\
-          \ token from earlier step\n  const bearerToken = await ex.result(\"fetch_bearer_token\"\
-          );\n\n  // JSON files downloaded from GitHub\n  const githubFiles = await\
-          \ ex.result(\"fetch_launchpads_github\");\n  const files = githubFiles.files;\n\
-          \n  //\n  // Determine tenant URL dynamically\n  //\n  const tenantUrl =\
-          \ globalThis.environmentUrl;\n\n  if (!tenantUrl) {\n    throw new Error(\"\
-          Unable to determine tenant URL from environment\");\n  }\n\n  //\n  // Build\
-          \ correct upload endpoint\n  //\n  const uploadUrl = `${tenantUrl}platform/document/v1/documents`;\n\
-          \n  //\n  // Launchpad metadata\n  //\n  const launchpads = [\n    { file:\
+          \ token from earlier step (NEW SHAPE)\n  const tokenResult = await ex.result(\"\
+          fetch_bearer_token\");\n  const bearerToken =\n    typeof tokenResult ===\
+          \ \"string\"\n      ? tokenResult\n      : tokenResult?.access_token;\n\n\
+          \  if (!bearerToken) {\n    throw new Error('Bearer token not found in result\
+          \ of \"fetch_bearer_token\".');\n  }\n\n  // JSON files downloaded from\
+          \ GitHub\n  const githubFiles = await ex.result(\"fetch_launchpads_github\"\
+          );\n  const files = githubFiles.files;\n\n  //\n  // Determine tenant URL\
+          \ dynamically\n  //\n  const tenantUrl = globalThis.environmentUrl;\n  if\
+          \ (!tenantUrl) {\n    throw new Error(\"Unable to determine tenant URL from\
+          \ environment\");\n  }\n\n  //\n  // Build correct upload endpoint\n  //\n\
+          \  const uploadUrl = `${tenantUrl}platform/document/v1/documents`;\n\n \
+          \ //\n  // Launchpad metadata\n  //\n  const launchpads = [\n    { file:\
           \ \"Onboarding - Developers.json\", name: \"Onboarding - Developers\", id:\
           \ \"onboarding-developers-a93f1cbe27\" },\n    { file: \"Onboarding - Dynatrace\
           \ Administrators.json\", name: \"Onboarding - Dynatrace Administrators\"\
@@ -233,20 +237,19 @@ workflow:
           \ \"onboarding-home-page-accelerate-your-dynatrace-journey-fa9137bd42\"\
           \ }\n  ];\n\n  //\n  // Upload each launchpad\n  //\n  const results = [];\n\
           \n  for (const lp of launchpads) {\n    const jsonData = files[lp.file];\n\
-          \n    if (!jsonData) {\n      throw new Error(`Missing JSON data for ${lp.file}`);\n\
-          \    }\n\n    // Build multipart/form-data body\n    const form = new FormData();\n\
-          \    form.append(\"name\", lp.name);\n    form.append(\"type\", \"launchpad\"\
-          );\n    form.append(\"id\", lp.id);\n\n    const blob = new Blob([JSON.stringify(jsonData,\
-          \ null, 2)], {\n      type: \"application/json\"\n    });\n\n    form.append(\"\
-          content\", blob, lp.file);\n\n    // Perform upload\n    const response\
-          \ = await fetch(uploadUrl, {\n      method: \"POST\",\n      headers: {\n\
-          \        \"Authorization\": `Bearer ${bearerToken}`\n      },\n      body:\
-          \ form\n    });\n\n    const respData = await response.json();\n\n    results.push({\n\
-          \      launchpad: lp.name,\n      id: lp.id,\n      status: response.status,\n\
-          \      response: respData\n    });\n\n    if (!response.ok) {\n      throw\
-          \ new Error(`Failed to upload ${lp.name}: ${response.status} ${response.statusText}`);\n\
-          \    }\n  }\n\n  //\n  // Return summary\n  //\n  return {\n    uploaded:\
-          \ results\n  };\n}"
+          \    if (!jsonData) {\n      throw new Error(`Missing JSON data for ${lp.file}`);\n\
+          \    }\n\n    const form = new FormData();\n    form.append(\"name\", lp.name);\n\
+          \    form.append(\"type\", \"launchpad\");\n    form.append(\"id\", lp.id);\n\
+          \n    const blob = new Blob([JSON.stringify(jsonData, null, 2)], {\n   \
+          \   type: \"application/json\"\n    });\n    form.append(\"content\", blob,\
+          \ lp.file);\n\n    const response = await fetch(uploadUrl, {\n      method:\
+          \ \"POST\",\n      headers: {\n        \"Authorization\": `Bearer ${bearerToken}`\n\
+          \      },\n      body: form\n    });\n\n    const respData = await response.json();\n\
+          \n    results.push({\n      launchpad: lp.name,\n      id: lp.id,\n    \
+          \  status: response.status,\n      response: respData\n    });\n\n    if\
+          \ (!response.ok) {\n      throw new Error(`Failed to upload ${lp.name}:\
+          \ ${response.status} ${response.statusText}`);\n    }\n  }\n\n  return {\
+          \ uploaded: results };\n}"
       action: dynatrace.automations:run-javascript
       active: true
       position:
@@ -275,19 +278,22 @@ workflow:
           \ new Error(`Unable to determine SSO endpoint from tenant URL: ${tenantUrl}`);\n\
           \  }\n\n  // Prepare headers\n  const myHeaders = new Headers();\n  myHeaders.append(\"\
           Content-Type\", \"application/x-www-form-urlencoded\");\n\n  // Prepare\
-          \ body\n  // Note: You'll need to create an OAuth client with the \"DOCUMENTS\"\
-          \ permissions and update the client_id, client_secret and resource values\
-          \ with your own\n  // You can learn how to do so at https://docs.dynatrace.com/docs/shortlink/oauth\n\
-          \  const urlencoded = new URLSearchParams();\n  urlencoded.append(\"grant_type\"\
-          , \"client_credentials\");\n  urlencoded.append(\"client_id\", \"YOUR_CLIENT_ID\"\
-          );\n  urlencoded.append(\"client_secret\", \"YOUR_CLIENT_SECRET\");\n  urlencoded.append(\"\
-          resource\", \"YOUR_DT_ACCOUNT_ID\");\n\n  const requestOptions = {\n   \
-          \ method: \"POST\",\n    headers: myHeaders,\n    body: urlencoded,\n  \
-          \  redirect: \"follow\"\n  };\n\n  // Perform request\n  const response\
-          \ = await fetch(ssoBase, requestOptions);\n  const data = await response.json();\n\
-          \n  if (!response.ok) {\n    throw new Error(`Failed to fetch token: ${response.status}\
-          \ ${JSON.stringify(data)}`);\n  }\n\n  // Return access token only\n  return\
-          \ data.access_token;\n}"
+          \ body (USER EDITS THESE)\n  const urlencoded = new URLSearchParams();\n\
+          \  urlencoded.append(\"grant_type\", \"client_credentials\");\n  urlencoded.append(\"\
+          client_id\", \"YOUR_CLIENT_ID\");\n  urlencoded.append(\"client_secret\"\
+          , \"YOUR_CLIENT_SECRET\");\n  urlencoded.append(\"resource\", \"YOUR_DT_ACCOUNT_ID\"\
+          );\n\n  // \U0001F511 Extract account ID from manually-entered resource\n\
+          \  const resource = urlencoded.get(\"resource\");\n  if (!resource) {\n\
+          \    throw new Error(\"OAuth resource value not found\");\n  }\n\n  const\
+          \ match = resource.match(/^urn:dtaccount:(.+)$/);\n  if (!match) {\n   \
+          \ throw new Error(`Invalid resource format: ${resource}`);\n  }\n\n  const\
+          \ accountId = match[1];\n\n  const requestOptions = {\n    method: \"POST\"\
+          ,\n    headers: myHeaders,\n    body: urlencoded,\n    redirect: \"follow\"\
+          \n  };\n\n  const response = await fetch(ssoBase, requestOptions);\n  const\
+          \ data = await response.json();\n\n  if (!response.ok) {\n    throw new\
+          \ Error(`Failed to fetch token: ${response.status} ${JSON.stringify(data)}`);\n\
+          \  }\n\n  // Return both values for downstream steps\n  return {\n    access_token:\
+          \ data.access_token,\n    accountId: accountId\n  };\n}"
       action: dynatrace.automations:run-javascript
       position:
         x: 0
