@@ -108,7 +108,7 @@ Replace these values with your OAuth client details:
 
 ### Notes
 
-- Tokens are valid for **30 seconds**  
+- Tokens are valid for **300 seconds**  
 - Workflow execution is required only once  
 - The workflow can be removed after successful Launchpad deployment
 
