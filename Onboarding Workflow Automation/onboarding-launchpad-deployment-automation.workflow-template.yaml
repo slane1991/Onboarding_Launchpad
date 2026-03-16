@@ -1,0 +1,272 @@
+metadata:
+  version: '1'
+  dependencies:
+    apps:
+    - id: dynatrace.automations
+      version: ^1.2879.0
+  inputs: []
+workflow:
+  title: Onboarding Launchpad Deployment Automation
+  description: ''
+  schemaVersion: 4
+  trigger: {}
+  result: null
+  type: STANDARD
+  input: {}
+  hourlyExecutionLimit: 1000
+  guide: null
+  tasks:
+    upload_dashboard:
+      name: upload_dashboard
+      input:
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\nimport\
+          \ { documentsClient } from '@dynatrace-sdk/client-document';\n\nexport default\
+          \ async function ({ executionId }) {\n\n  //\n  // Load workflow context\n\
+          \  //\n  const ex = await execution(executionId);\n\n  //\n  // JSON files\
+          \ downloaded from GitHub\n  //\n  const githubFiles = await ex.result(\"\
+          fetch_dashboard_github\");\n  const files = githubFiles.files;\n\n  //\n\
+          \  // Document metadata\n  //\n  const documents = [\n    { file: \"Launchpad\
+          \ Tracker.json\", name: \"Onboarding - Launchpad Tracker\", id: \"onboarding-admin-tracking-k5294kxd5l\"\
+          \ }\n  ];\n\n  //\n  // Upload each document\n  //\n  const results = [];\n\
+          \n  for (const doc of documents) {\n\n    const jsonData = files[doc.file];\n\
+          \n    if (!jsonData) {\n      throw new Error(`Missing JSON data for ${doc.file}`);\n\
+          \    }\n\n    try {\n\n      const response = await documentsClient.createDocument({\n\
+          \        body: {\n          name: doc.name,\n          type: \"dashboard\"\
+          ,\n          id: doc.id,\n          content: new Blob(\n            [JSON.stringify(jsonData,\
+          \ null, 2)],\n            { type: \"application/json\" }\n          )\n\
+          \        }\n      });\n\n      results.push({\n        dashboard: doc.name,\n\
+          \        id: doc.id,\n        status: \"uploaded\",\n        response\n\
+          \      });\n\n    } catch (error) {\n\n      results.push({\n        dashboard:\
+          \ doc.name,\n        id: doc.id,\n        status: \"failed\",\n        error:\
+          \ error.message\n      });\n\n      throw new Error(`Failed to upload ${doc.name}:\
+          \ ${error.message}`);\n    }\n  }\n\n  //\n  // Return summary\n  //\n \
+          \ return {\n    uploaded: results\n  };\n\n}"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: -1
+        y: 2
+      conditions:
+        states:
+          fetch_dashboard_github: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - fetch_dashboard_github
+    upload_launchpads:
+      name: upload_launchpads
+      input:
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\nimport\
+          \ { documentsClient } from '@dynatrace-sdk/client-document';\n\nexport default\
+          \ async function ({ executionId }) {\n\n  //\n  // Load workflow context\n\
+          \  //\n  const ex = await execution(executionId);\n\n  //\n  // JSON files\
+          \ downloaded from GitHub\n  //\n  const githubFiles = await ex.result(\"\
+          fetch_launchpads_github\");\n  const files = githubFiles.files;\n\n  //\n\
+          \  // Launchpad metadata\n  //\n  const launchpads = [\n    { file: \"Onboarding\
+          \ - Developers.json\", name: \"Onboarding - Developers\", id: \"onboarding-developers-a93f1cbe27\"\
+          \ },\n    { file: \"Onboarding - Dynatrace Administrators.json\", name:\
+          \ \"Onboarding - Dynatrace Administrators\", id: \"onboarding-dynatrace-administrators-4c9ae2bd01\"\
+          \ },\n    { file: \"Onboarding - Dynatrace Support & Helpdesk.json\", name:\
+          \ \"Onboarding - Dynatrace Support & Helpdesk\", id: \"onboarding-dynatrace-support-helpdesk-13fb9c7ad5\"\
+          \ },\n    { file: \"Onboarding - Frontend Developer (Mobile).json\", name:\
+          \ \"Onboarding - Frontend Developer (Mobile)\", id: \"onboarding-frontend-developer-mobile-89de3ac4f2\"\
+          \ },\n    { file: \"Onboarding - Frontend Developer (Web).json\", name:\
+          \ \"Onboarding - Frontend Developer (Web)\", id: \"onboarding-frontend-developer-web-b2e84d79c1\"\
+          \ },\n    { file: \"Onboarding - Infrastructure Engineer.json\", name: \"\
+          Onboarding - Infrastructure Engineer\", id: \"onboarding-infrastructure-engineer-18bcd54ea3\"\
+          \ },\n    { file: \"Onboarding - Operations.json\", name: \"Onboarding -\
+          \ Operations\", id: \"onboarding-operations-9ae84f1bd2\" },\n    { file:\
+          \ \"Onboarding - Platform Engineers.json\", name: \"Onboarding - Platform\
+          \ Engineers\", id: \"onboarding-platform-engineers-2ad913c7e8\" },\n   \
+          \ { file: \"Onboarding - Security Engineers.json\", name: \"Onboarding -\
+          \ Security Engineers\", id: \"onboarding-security-engineers-d91c2b8a45\"\
+          \ },\n    { file: \"Onboarding - Site Reliability Engineers.json\", name:\
+          \ \"Onboarding - Site Reliability Engineers\", id: \"onboarding-site-reliability-engineers-54c8f13b9e\"\
+          \ },\n    { file: \"Onboarding Home Page - Accelerate Your Dynatrace Journey.json\"\
+          , name: \"Onboarding Home Page - Accelerate Your Dynatrace Journey\", id:\
+          \ \"onboarding-home-page-accelerate-your-dynatrace-journey-fa9137bd42\"\
+          \ }\n  ];\n\n  //\n  // Upload launchpads\n  //\n  const results = [];\n\
+          \n  for (const lp of launchpads) {\n\n    const jsonData = files[lp.file];\n\
+          \n    if (!jsonData) {\n      throw new Error(`Missing JSON data for ${lp.file}`);\n\
+          \    }\n\n    try {\n\n      const response = await documentsClient.createDocument({\n\
+          \        body: {\n          name: lp.name,\n          type: \"launchpad\"\
+          ,\n          id: lp.id,\n          content: new Blob(\n            [JSON.stringify(jsonData,\
+          \ null, 2)],\n            { type: \"application/json\" }\n          )\n\
+          \        }\n      });\n\n      results.push({\n        launchpad: lp.name,\n\
+          \        id: lp.id,\n        status: \"uploaded\",\n        response\n \
+          \     });\n\n    } catch (error) {\n\n      results.push({\n        launchpad:\
+          \ lp.name,\n        id: lp.id,\n        status: \"failed\",\n        error:\
+          \ error.message\n      });\n\n      throw new Error(`Failed to upload ${lp.name}:\
+          \ ${error.message}`);\n    }\n  }\n\n  //\n  // Return summary\n  //\n \
+          \ return {\n    uploaded: results\n  };\n\n}"
+      action: dynatrace.automations:run-javascript
+      active: true
+      position:
+        x: 0
+        y: 2
+      conditions:
+        states:
+          fetch_launchpads_github: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - fetch_launchpads_github
+    fetch_dashboard_github:
+      name: fetch_dashboard_github
+      input:
+        script: "export default async function () {\n  const owner = \"slane1991\"\
+          ;\n  const repo = \"Onboarding_Launchpad\";\n\n  // Base API URL\n  const\
+          \ apiBase = `https://api.github.com/repos/${owner}/${repo}/contents/`;\n\
+          \n  // Fetch the root directory file list\n  const fileListResponse = await\
+          \ fetch(apiBase, {\n    headers: {\n      \"Accept\": \"application/vnd.github.v3+json\"\
+          ,\n    }\n  });\n\n  if (!fileListResponse.ok) {\n    throw new Error(`GitHub\
+          \ API error listing files: ${fileListResponse.status} ${fileListResponse.statusText}`);\n\
+          \  }\n\n  const fileList = await fileListResponse.json();\n\n  // Filter\
+          \ JSON files (11 of them in your repo)\n  const jsonFiles = fileList.filter(file\
+          \ => file.name.endsWith(\".json\"));\n\n  const results = {};\n\n  // Loop\
+          \ to download each JSON file\n  for (const file of jsonFiles) {\n    const\
+          \ fileResponse = await fetch(file.download_url, {\n      headers: {\n  \
+          \      \"Accept\": \"application/json\",\n      }\n    });\n\n    if (!fileResponse.ok)\
+          \ {\n      throw new Error(`Error downloading ${file.name}: ${fileResponse.status}\
+          \ ${fileResponse.statusText}`);\n    }\n\n    const fileData = await fileResponse.json();\n\
+          \n    // Store by filename (without extension)\n    results[file.name] =\
+          \ fileData;\n  }\n\n  // Return all JSON files for next workflow step\n\
+          \  return {\n    files: results\n  };\n}"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: -1
+        y: 1
+      description: Run custom JavaScript code.
+      predecessors: []
+    fetch_launchpads_github:
+      name: fetch_launchpads_github
+      input:
+        script: "export default async function () {\n  const owner = \"slane1991\"\
+          ;\n  const repo = \"Onboarding_Launchpad\";\n\n  // Base API URL\n  const\
+          \ apiBase = `https://api.github.com/repos/${owner}/${repo}/contents/`;\n\
+          \n  // Fetch the root directory file list\n  const fileListResponse = await\
+          \ fetch(apiBase, {\n    headers: {\n      \"Accept\": \"application/vnd.github.v3+json\"\
+          ,\n    }\n  });\n\n  if (!fileListResponse.ok) {\n    throw new Error(`GitHub\
+          \ API error listing files: ${fileListResponse.status} ${fileListResponse.statusText}`);\n\
+          \  }\n\n  const fileList = await fileListResponse.json();\n\n  // Filter\
+          \ JSON files (11 of them in your repo)\n  const jsonFiles = fileList.filter(file\
+          \ => file.name.endsWith(\".json\"));\n\n  const results = {};\n\n  // Loop\
+          \ to download each JSON file\n  for (const file of jsonFiles) {\n    const\
+          \ fileResponse = await fetch(file.download_url, {\n      headers: {\n  \
+          \      \"Accept\": \"application/json\",\n      }\n    });\n\n    if (!fileResponse.ok)\
+          \ {\n      throw new Error(`Error downloading ${file.name}: ${fileResponse.status}\
+          \ ${fileResponse.statusText}`);\n    }\n\n    const fileData = await fileResponse.json();\n\
+          \n    // Store by filename (without extension)\n    results[file.name] =\
+          \ fileData;\n  }\n\n  // Return all JSON files for next workflow step\n\
+          \  return {\n    files: results\n  };\n}"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: 0
+        y: 1
+      description: Run custom JavaScript code.
+      predecessors: []
+    update_dashboard_public:
+      name: update_dashboard_public
+      input:
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\nimport\
+          \ { documentsClient } from '@dynatrace-sdk/client-document';\n\nexport default\
+          \ async function ({ executionId }) {\n  const ex = await execution(executionId);\n\
+          \n  const documents = [\n    {\n      name: \"Onboarding - Launchpad Tracker\"\
+          ,\n      id: \"onboarding-admin-tracking-k5294kxd5l\",\n      type: \"dashboard\"\
+          ,\n    },\n  ];\n\n  const results = [];\n\n  for (const doc of documents)\
+          \ {\n    try {\n      //\n      // 1) Get document -> Workflow runtime returns\
+          \ { metadata, content }\n      //\n      const current = await documentsClient.getDocument({\
+          \ id: doc.id });\n\n      // The optimistic locking token is the document\
+          \ \"version\" in metadata. [1](https://dynatrace.sharepoint.com/sites/RnD/News/SitePages/Dynatrace-R&D---Newsletter-3-2026.aspx?web=1)\n\
+          \      const optimisticLockingVersion = current?.metadata?.version;\n\n\
+          \      if (!optimisticLockingVersion) {\n        const metaKeys =\n    \
+          \      current?.metadata && typeof current.metadata === \"object\"\n   \
+          \         ? Object.keys(current.metadata)\n            : [];\n        throw\
+          \ new Error(\n          `Could not determine version for '${doc.id}'. metadata\
+          \ keys: ${metaKeys.join(\", \")}`\n        );\n      }\n\n      //\n   \
+          \   // 2) Update document metadata: make it public by setting isPrivate=false.\n\
+          \      // \"Documents can be made public via the updateDocument operation\"\
+          \ [2](https://developer.dynatrace.com/develop/sdks/client-document/)\n \
+          \     //\n      const updated = await documentsClient.updateDocument({\n\
+          \        id: doc.id,\n        optimisticLockingVersion,\n        body: {\n\
+          \          isPrivate: false,\n        },\n      });\n\n      results.push({\n\
+          \        dashboard: doc.name,\n        id: doc.id,\n        status: \"updated_public\"\
+          ,\n        optimisticLockingVersionUsed: optimisticLockingVersion,\n   \
+          \     response: updated,\n      });\n    } catch (error) {\n      results.push({\n\
+          \        dashboard: doc.name,\n        id: doc.id,\n        status: \"failed\"\
+          ,\n        error: error?.message ?? String(error),\n      });\n\n      throw\
+          \ new Error(\n        `Failed to set public access for ${doc.name}: ${error?.message\
+          \ ?? error}`\n      );\n    }\n  }\n\n  return { updated: results };\n}\n\
+          ``"
+      action: dynatrace.automations:run-javascript
+      position:
+        x: -1
+        y: 3
+      conditions:
+        states:
+          upload_dashboard: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - upload_dashboard
+    update_launchpads_public:
+      name: update_launchpads_public
+      input:
+        script: "import { execution } from '@dynatrace-sdk/automation-utils';\nimport\
+          \ { documentsClient } from '@dynatrace-sdk/client-document';\n\nexport default\
+          \ async function ({ executionId }) {\n  //\n  // Load workflow context (not\
+          \ strictly required for this step, but keeps pattern consistent)\n  //\n\
+          \  const ex = await execution(executionId);\n\n  //\n  // Launchpad IDs\
+          \ to update\n  //\n  const launchpads = [\n    { name: \"Onboarding - Developers\"\
+          , id: \"onboarding-developers-a93f1cbe27\" },\n    { name: \"Onboarding\
+          \ - Dynatrace Administrators\", id: \"onboarding-dynatrace-administrators-4c9ae2bd01\"\
+          \ },\n    { name: \"Onboarding - Dynatrace Support & Helpdesk\", id: \"\
+          onboarding-dynatrace-support-helpdesk-13fb9c7ad5\" },\n    { name: \"Onboarding\
+          \ - Frontend Developer (Mobile)\", id: \"onboarding-frontend-developer-mobile-89de3ac4f2\"\
+          \ },\n    { name: \"Onboarding - Frontend Developer (Web)\", id: \"onboarding-frontend-developer-web-b2e84d79c1\"\
+          \ },\n    { name: \"Onboarding - Infrastructure Engineer\", id: \"onboarding-infrastructure-engineer-18bcd54ea3\"\
+          \ },\n    { name: \"Onboarding - Operations\", id: \"onboarding-operations-9ae84f1bd2\"\
+          \ },\n    { name: \"Onboarding - Platform Engineers\", id: \"onboarding-platform-engineers-2ad913c7e8\"\
+          \ },\n    { name: \"Onboarding - Security Engineers\", id: \"onboarding-security-engineers-d91c2b8a45\"\
+          \ },\n    { name: \"Onboarding - Site Reliability Engineers\", id: \"onboarding-site-reliability-engineers-54c8f13b9e\"\
+          \ },\n    { name: \"Onboarding Home Page - Accelerate Your Dynatrace Journey\"\
+          , id: \"onboarding-home-page-accelerate-your-dynatrace-journey-fa9137bd42\"\
+          \ }\n  ];\n\n  //\n  // Helper: update with optimistic locking + small retry\
+          \ for 409 conflicts\n  // (Optimistic locking is required: read current\
+          \ version, then update using that version.) [1](https://dynatrace.sharepoint.com/sites/ProductSecurity/SitePages/Vulnerability-Remediation-Policy.aspx?web=1)\n\
+          \  //\n  async function setPublicWithRetry(documentId, attempts = 3) {\n\
+          \    for (let i = 0; i < attempts; i++) {\n      const current = await documentsClient.getDocument({\
+          \ id: documentId });\n\n      // In your runtime, getDocument() returns\
+          \ { metadata, content }\n      const version = current?.metadata?.version;\n\
+          \      if (!version) {\n        const metaKeys =\n          current?.metadata\
+          \ && typeof current.metadata === \"object\"\n            ? Object.keys(current.metadata)\n\
+          \            : [];\n        throw new Error(\n          `Missing metadata.version\
+          \ for '${documentId}'. metadata keys: ${metaKeys.join(\", \")}`\n      \
+          \  );\n      }\n\n      try {\n        // updateDocument is the method available\
+          \ in your workflow runtime to update isPrivate [2](https://docs.cloud.google.com/dotnet/docs/reference/Google.Cloud.Dialogflow.V2Beta1/latest/Google.Cloud.Dialogflow.V2Beta1.DocumentsClient)\n\
+          \        return await documentsClient.updateDocument({\n          id: documentId,\n\
+          \          optimisticLockingVersion: version,\n          body: { isPrivate:\
+          \ false }\n        });\n      } catch (e) {\n        const msg = e?.message\
+          \ ?? String(e);\n\n        // If it's an optimistic locking conflict (409),\
+          \ retry by re-reading the latest version\n        if (msg.includes(\"409\"\
+          ) || msg.toLowerCase().includes(\"conflict\")) {\n          continue;\n\
+          \        }\n\n        // Otherwise fail immediately\n        throw e;\n\
+          \      }\n    }\n\n    throw new Error(\n      `Repeated optimistic-locking\
+          \ conflicts while updating '${documentId}'.`\n    );\n  }\n\n  //\n  //\
+          \ Update all launchpads\n  //\n  const results = [];\n\n  for (const lp\
+          \ of launchpads) {\n    try {\n      const updated = await setPublicWithRetry(lp.id);\n\
+          \n      results.push({\n        launchpad: lp.name,\n        id: lp.id,\n\
+          \        status: \"updated_public\",\n        response: updated\n      });\n\
+          \    } catch (error) {\n      results.push({\n        launchpad: lp.name,\n\
+          \        id: lp.id,\n        status: \"failed\",\n        error: error?.message\
+          \ ?? String(error)\n      });\n\n      // Match your pattern: fail the step\
+          \ if any launchpad fails\n      throw new Error(\n        `Failed to set\
+          \ public access for ${lp.name}: ${error?.message ?? error}`\n      );\n\
+          \    }\n  }\n\n  return { updated: results };\n}\n``"
+      action: dynatrace.automations:run-javascript
+      active: true
+      position:
+        x: 0
+        y: 3
+      conditions:
+        states:
+          upload_launchpads: OK
+      description: Run custom JavaScript code.
+      predecessors:
+      - upload_launchpads
