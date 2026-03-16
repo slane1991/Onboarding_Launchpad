@@ -49,7 +49,7 @@ Each host must be added separately.
 
 ### 2. Deploy the Workflow
 
-Download the workflow template from this repository and upload it to Dynatrace:
+[Download the workflow template](https://github.com/slane1991/Onboarding_Launchpad/blob/main/Onboarding%20Workflow%20Automation/onboarding-launchpad-deployment-automation.workflow-template.yaml) from this repository and upload it to Dynatrace:
 
 1. Go to **Workflows**
 2. Select **Upload**
