@@ -1,155 +1,89 @@
-# 🚀 Automated Deployment of Onboarding Launchpads
-### Using Dynatrace Workflows + GitHub‑Hosted Launchpad Templates
+# Dynatrace Onboarding Launchpads
 
-This repository contains all files and automation templates required to deploy the **Dynatrace Onboarding Launchpad series** into any customer tenant. Deployment is fully automated through **Dynatrace Workflows**, which pull the Launchpad JSON files directly from GitHub. The deployment also includes an adoption dashboard which tracks which users have accessed the launchpads.
+## Description
 
----
+This project provides a set of **role‑based Dynatrace Onboarding Launchpads** (for example SREs, Dynatrace Admins, Developers) which can be deployed automatically into a Dynatrace tenant.
 
-## 📘 Overview
+Launchpads are deployed using **Dynatrace Workflows** and **GitHub‑hosted JSON templates**, enabling consistent onboarding across environments. After deployment, Launchpads can be **fully customised within the Dynatrace UI** to align with customer‑specific tools, processes, and maturity levels.
 
-The Onboarding Launchpad series helps guide new users through Dynatrace with role‑based, customizable content.
+## What This Provides
 
-This repository enables:
+- Automated deployment of multiple onboarding Launchpads  
+- GitHub‑hosted Launchpad definitions as the deployment source  
+- One‑time workflow execution (safe to remove after use)  
+- Optional adoption dashboard to track Launchpad usage  
+- Full post‑deployment customisation via the Dynatrace UI  
 
-- Automated creation of all Launchpads in a target tenant  
-- Automatic mapping of dependencies between Launchpads  
-- One‑time workflow execution (safe to delete afterward)  
-- GitHub‑hosted JSON as the source of truth
+## Prerequisites
 
-You may choose **automated deployment** (recommended) or manual JSON upload.
+To use the automated deployment, you must be able to:
 
----
+- Upload and run Dynatrace Workflows  
+- Allow outbound access from Dynatrace to GitHub  
 
-# ⚠️ Before You Begin
+No OAuth client, credentials, or authentication setup is required.
 
-Automated deployment requires the ability to:
+## Deployment Steps
 
-1. Pull Launchpad JSON files from GitHub  
-2. Generate a bearer token via a Dynatrace OAuth client  
+### 1. Whitelist Required External URLs
 
-This means you must:
+Dynatrace must be allowed to retrieve Launchpad templates from GitHub.
 
-- Temporarily whitelist a few external host patterns  
-- Temporarily store OAuth credentials within the Workflow  
-
-> **Note:**  
-> - These credentials are used only during deployment.  
-> - The Workflow can be deleted immediately after use.  
-> - Whitelisted URLs can also be removed afterward.  
-
-Manual upload is supported, but you must manually re‑map the Launchpad navigation buttons.
-
----
-
-# 🧩 Deployment Steps
-
----
-
-## **1. Create an OAuth Client**
-
-Dynatrace’s Documents API requires a bearer token that is generated via OAuth.
-
-Follow Dynatrace's OAuth setup guide:  
-🔗 https://docs.dynatrace.com/docs/shortlink/oauth
-
-### Steps
-
-1. Go to **Account Management**  
-2. Navigate to **Identity & access management → OAuth clients**  
-3. Select **Create client**  
-4. Enter an owner email  
-5. Add a description  
-6. Assign permissions:  
-   - **Document Service → Create and edit documents**  
-     - `documents:documents:write`
-   - **Account → View users and groups (Used for adoption tracking dashboard)**  
-     - `account-idm-read, iam:users:read, iam:groups:read`  
-7. Select **Create client**  
-8. Copy the generated values — you will not be able to view the client secret again
-
----
-
-## **2. Upload the Workflow Template**
-
-Download the prebuilt automation workflow from this repository:
-
-```
-https://github.com/slane1991/Onboarding_Launchpad/tree/main/Onboarding%20Workflow%20Automation
-```
-
-### Upload in Dynatrace
-
-1. Go to **Workflows**  
-2. Select **Upload**  
-3. Choose the workflow file  
-4. Select **Create workflow**
-
-> **Do not run the workflow yet.**  
-> Credentials and whitelisting must be configured first.
-
----
-
-## **3. Insert OAuth Credentials into the Workflow**
-
-Locate the workflow step named:
-
-```
-fetch_bearer_token
-```
-
-Replace these values with your OAuth client details:
-
-- `client_id`  
-- `client_secret`  
-- `resource`  
-
-<img width="972" height="1138" alt="image" src="https://github.com/user-attachments/assets/c82d7f80-098a-49af-90a9-30771c8100e5" />
-
-
-### Notes
-
-- Tokens are valid for **300 seconds**  
-- Workflow execution is required only once  
-- The workflow can be removed after successful Launchpad deployment
-
----
-
-## **4. Whitelist Required External URLs**
-
-Dynatrace must allow outbound access to GitHub and Dynatrace SSO endpoints.
-
-Add each host under:
+Add the following host patterns under:
 
 **Settings → General → External requests → + New host pattern**
 
-Whitelist the following:
-
-```
-sso.dynatrace.com
+``
 raw.githubusercontent.com
+``
+
+``
 api.github.com
-```
+``
 
 Each host must be added separately.
 
----
+### 2. Deploy the Workflow
 
-## **5. Run the Workflow**
+Download the workflow template from this repository and upload it to Dynatrace:
 
-Once credentials and whitelisting are completed:
+1. Go to **Workflows**
+2. Select **Upload**
+3. Choose the workflow JSON file
+4. Select **Create workflow**
 
-1. Select **Run workflow**  
-2. Wait until execution completes  
-3. Return to the Dynatrace homepage  
-4. Select **Browse all**  
-5. Confirm that all Onboarding Launchpads (prefix **“Onboarding - ”**) now appear
+NOTE: By Default, The Launchpads are globally shared on the tenant. This is for ease of use purposes. If you want to manually control access then you need to disable the update_dashboards_public & update_launchpads_public steps in the Workflow by clicking the (...) button on each step and selecting "Disable".
 
-### After verification
+### 3. Run the Workflow
 
-You may now:
+Once the workflow is uploaded and GitHub access is allowed:
 
-- ✔ Delete the workflow  
-- ✔ Remove the whitelisted hosts  
-- ✔ Configure user access to each Launchpad  
+1. Open the workflow
+2. Select **Run workflow**
+3. Wait for execution to complete
 
-By default, Launchpads are **not globally shared**, allowing customers to control access.
+### 4. Verify Deployment
+
+After the workflow completes:
+
+- Navigate to **Browse all**
+- Confirm the Onboarding Launchpads (prefixed with `Onboarding -`) are visible
+- Open a Launchpad to confirm content loads correctly
+
+### 5. Optional Cleanup
+
+After successful verification, you may:
+
+- Delete the workflow  
+- Remove the GitHub host patterns from external request settings   
+
+## Manual Deployment Option
+
+If automated deployment is not suitable, Launchpad JSON files can be uploaded manually via the Dynatrace UI.
+
+When using manual deployment:
+
+- Each Launchpad must be imported individually  
+- Launchpad "Let's Go" navigation links must be configured manually for the "Onboarding Home Page - Accelerate Your Dynatrace Journey" Launchpad to point to the respective dedicated Launchpads.
+
+Automated deployment is recommended for consistency and reduced setup effort.
