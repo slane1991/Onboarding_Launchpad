@@ -56,7 +56,7 @@ Each host must be added separately.
 3. Choose the workflow JSON file
 4. Select **Create workflow**
 
-NOTE: By Default, The Launchpads are globally shared on the tenant. This is for ease of use purposes. If you want to manually control access then you need to disable the update_dashboards_public & update_launchpads_public steps in the Workflow by clicking the (...) button on each step and selecting "Disable".
+NOTE: By Default, The Launchpads are globally shared on the tenant. This is for ease of use purposes. If you want to manually control access then you need to disable the update_dashboards_public & update_launchpads_public steps in the Workflow by clicking the (...) button on each step and selecting "Disable" PRIOR to executing the Workflow.
 
 
 ### 3. Run the Workflow
